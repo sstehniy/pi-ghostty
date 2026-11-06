@@ -21,7 +21,9 @@ Inside Pi:
 /ghostty model
 ```
 
-Search the model picker and select your preferred title model from connected providers. It is saved globally in `~/.pi/agent/pi-ghostty.json` (or `$PI_CODING_AGENT_DIR/pi-ghostty.json`); other open sessions pick up a changed setting on `/reload`. Your main coding model is unchanged. Prefer a small, fast text model.
+Search the model picker and select **any chat model from any provider connected to Pi**. OpenAI, Anthropic, Google, local compatible servers, and other Pi providers use the same selection flow. **A Codex login is not required.** The selected model handles both initial title generation and later relevance checks.
+
+The preference is saved globally in `~/.pi/agent/pi-ghostty.json` (or `$PI_CODING_AGENT_DIR/pi-ghostty.json`); other open sessions pick up a changed setting on `/reload`. Your main coding model is unchanged. Prefer a small, fast text model.
 
 **No model selected means no naming or relevance requests.** The spinner works without setup. Choose **Disable naming** in the picker to turn naming off again.
 
@@ -66,7 +68,7 @@ bun run test:terminal # macOS/Linux; Python 3 and Node.js required
 pi -e ./extensions/ghostty.ts
 ```
 
-`bun run test:semantic` is a **manual live test**: 20 synthetic cases through `openai-codex/gpt-6-luna` using an existing Codex subscription only. It never falls back to API-key billing and is not run by CI. See [test results](https://github.com/sstehniy/pi-ghostty/blob/main/tests/SEMANTIC_RESULTS.md).
+`bun run test:semantic` is a **manual maintainer evaluation**, not part of the extension's runtime or setup. This evaluation uses 20 synthetic cases through `openai-codex/gpt-6-luna` with an existing Codex subscription, solely to avoid separately billed API calls during development. Its Codex requirement does not restrict users' title models. It is not run by CI. See [test results](https://github.com/sstehniy/pi-ghostty/blob/main/tests/SEMANTIC_RESULTS.md).
 
 ## Remove
 

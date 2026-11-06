@@ -38,9 +38,11 @@ let previousAgentDir: string | undefined;
 
 function harness(options: {
   session?: SessionManager; mode?: ExtensionContext["mode"]; name?: string;
-  configured?: boolean; available?: boolean;
+  configured?: boolean; available?: boolean; titleModel?: NonNullable<ExtensionContext["model"]>;
 } = {}) {
-  if (options.configured !== false) saveModel({ provider: model.provider, id: model.id });
+  const selectedModel = options.titleModel ?? model;
+  const models = [{ ...model, id: "coding" }, selectedModel];
+  if (options.configured !== false) saveModel({ provider: selectedModel.provider, id: selectedModel.id });
   const session = options.session ?? SessionManager.inMemory(cwd);
   if (options.name) session.appendSessionInfo(options.name);
   const handlers = new Map<string, Handler[]>();
@@ -61,8 +63,12 @@ function harness(options: {
   const ctx = {
     mode: options.mode ?? "tui", hasUI: true, cwd, model: { ...model, id: "coding" }, sessionManager: session,
     modelRegistry: {
-      streamSimple, find: () => options.available === false ? undefined : model,
-      hasConfiguredAuth: () => true, getAvailable: () => [{ ...model, id: "coding" }, model],
+      streamSimple,
+      find: (provider: string, id: string) => {
+        if (options.available === false) return undefined;
+        return models.find((model) => model.provider === provider && model.id === id);
+      },
+      hasConfiguredAuth: () => true, getAvailable: () => models,
     },
     ui: { setTitle: (title: string) => titles.push(title), notify, custom },
   } as unknown as ExtensionContext;
@@ -377,6 +383,22 @@ describe("failure boundaries", () => {
 });
 
 describe("model settings and picker", () => {
+  test.each([
+    { provider: "anthropic", id: "claude-haiku-4-5", api: "anthropic-messages" },
+    { provider: "google", id: "gemini-2.5-flash", api: "google-generative-ai" },
+  ] as const)("uses $provider for both naming and reevaluation without a Codex dependency", async (choice) => {
+    const h = harness({ titleModel: { ...model, ...choice } });
+    await h.start();
+    await h.prompt();
+    await h.answer("TITLE: Fix login validation");
+    await h.consume("Implement billing");
+    await h.answer("TITLE: Implement billing");
+    expect(h.streamSimple.mock.calls.map((call) => [call[0].provider, call[0].id, call[0].api])).toEqual([
+      [choice.provider, choice.id, choice.api], [choice.provider, choice.id, choice.api],
+    ]);
+    expect(h.session.getSessionName()).toBe("Implement billing");
+  });
+
   test("a searchable connected-provider picker saves the model without changing the coding model", async () => {
     const h = harness({ configured: false });
     await h.start();
