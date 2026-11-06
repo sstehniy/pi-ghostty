@@ -1,5 +1,5 @@
 {
-  "name": "@sstehniy/pi-ghostty",
+  "name": "@sstehniybogd/pi-ghostty",
   "version": "0.1.0",
   "description": "Automatic task titles and a working spinner in Ghostty tabs and sidebar for the Pi coding agent.",
   "type": "module",

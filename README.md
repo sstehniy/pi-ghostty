@@ -10,7 +10,7 @@ Idle:       Fix login validation | demo-app
 ## Install
 
 ```sh
-pi install npm:@sstehniy/pi-ghostty
+pi install npm:@sstehniybogd/pi-ghostty
 ```
 
 Or install from GitHub:
@@ -43,7 +43,7 @@ pi -e ./extensions/ghostty.ts
 ## Remove
 
 ```sh
-pi remove npm:@sstehniy/pi-ghostty
+pi remove npm:@sstehniybogd/pi-ghostty
 ```
 
 Use the same source you installed from, then `/reload`. Saved session names are kept.
