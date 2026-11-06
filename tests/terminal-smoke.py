@@ -27,7 +27,15 @@ class ModelServer(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        naming = "Write a concise" in json.dumps(body)
+        naming = body["model"] == "title-model"
+        answer = "Done."
+        if naming:
+            state = json.loads(body["messages"][-1]["content"])
+            answer = "KEEP"
+            if not state["current_title"]:
+                answer = "TITLE: " + TITLE
+            if "billing" in state["new_request"].lower():
+                answer = "TITLE: Implement billing"
         record = {"naming": naming, "body": body, "started": time.monotonic()}
         requests.append(record)
         time.sleep(0.4 if naming else 1.2)
@@ -35,12 +43,12 @@ class ModelServer(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
         chunks = [
-            {"delta": {"role": "assistant", "content": TITLE if naming else "Done."}, "finish_reason": None},
+            {"delta": {"role": "assistant", "content": answer}, "finish_reason": None},
             {"delta": {}, "finish_reason": "stop"},
         ]
         for choice in chunks:
             chunk = {"id": "smoke", "object": "chat.completion.chunk", "created": 0,
-                     "model": "test-model", "choices": [{"index": 0, **choice}]}
+                     "model": body["model"], "choices": [{"index": 0, **choice}]}
             self.wfile.write(("data: " + json.dumps(chunk) + "\n\n").encode())
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
@@ -58,11 +66,12 @@ try:
         project = Path(temporary) / "demo-app"
         project.mkdir()
         (agent / "settings.json").write_text(json.dumps({"quietStartup": True, "defaultProjectTrust": "no"}))
+        (agent / "pi-ghostty.json").write_text(json.dumps({"provider": "smoke", "id": "title-model"}))
         (agent / "models.json").write_text(json.dumps({"providers": {"smoke": {
             "baseUrl": f"http://127.0.0.1:{server.server_port}/v1",
             "api": "openai-completions", "apiKey": "dummy",
-            "models": [{"id": "test-model", "reasoning": False, "input": ["text"],
-                        "contextWindow": 8192, "maxTokens": 2048}],
+            "models": [{"id": name, "reasoning": False, "input": ["text"],
+                        "contextWindow": 8192, "maxTokens": 2048} for name in ["test-model", "title-model"]],
         }}}))
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
@@ -77,8 +86,11 @@ try:
         process = subprocess.Popen(command, cwd=project, env=environment, stdin=slave, stdout=slave, stderr=slave)
         os.close(slave)
         output = bytearray()
-        expected_idle = f"{TITLE} | demo-app"
-        deadline = time.monotonic() + 30
+        expected = [f"{TITLE} | demo-app", f"{TITLE} | demo-app", "Implement billing | demo-app"]
+        prompts = [b"Add tests and commit\r", b"Now implement billing\r"]
+        stage = 0
+        stage_start = 0
+        deadline = time.monotonic() + 40
         titles = []
         while time.monotonic() < deadline:
             if select.select([master], [], [], 0.1)[0]:
@@ -97,21 +109,28 @@ try:
                     if f"\x1b]{code};?".encode() in data:
                         os.write(master, f"\x1b]{code};rgb:0000/0000/0000\x1b\\".encode())
                 titles = [value.decode() for value in re.findall(rb"\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)", output)]
-                if expected_idle in titles and any(title.endswith(expected_idle) and title != expected_idle for title in titles):
-                    break
+                stage_titles = titles[stage_start:]
+                idle = expected[stage]
+                if idle in stage_titles and any(title.endswith(idle) and title != idle for title in stage_titles):
+                    working = [title for title in stage_titles if title.endswith(idle) and title != idle]
+                    assert len(set(working)) >= 2, f"Spinner did not animate: {working}"
+                    stage += 1
+                    if stage == len(expected):
+                        break
+                    stage_start = len(titles)
+                    os.write(master, prompts[stage - 1])
             if process.poll() is not None:
                 break
 
-        assert expected_idle in titles, f"Missing idle title. Titles: {titles}. Output: {output[-2500:]!r}"
-        working = [title for title in titles if title.endswith(expected_idle) and title != expected_idle]
-        assert len(set(working)) >= 2, f"Spinner did not animate: {working}"
-        assert titles[-1] == expected_idle, f"Spinner did not settle: {titles[-5:]}"
+        assert stage == len(expected), f"Missing title transition at stage {stage}. Titles: {titles}. Output: {output[-2500:]!r}"
+        assert titles[-1] == expected[-1], f"Spinner did not settle: {titles[-5:]}"
         naming = [request for request in requests if request["naming"]]
         main = [request for request in requests if not request["naming"]]
-        assert len(naming) == 1 and len(main) == 1, f"Unexpected requests: {len(naming)} naming, {len(main)} main"
-        assert main[0]["started"] < naming[0]["finished"], "Naming delayed the main request"
-        assert len(naming[0]["body"]["messages"]) == 2, "Naming received more than its instruction and prompt"
-        assert not naming[0]["body"].get("tools"), "Naming received tools"
+        assert len(naming) == 3 and len(main) == 3, f"Unexpected requests: {len(naming)} naming, {len(main)} main"
+        for title_request, main_request in zip(naming, main):
+            assert main_request["started"] < title_request["finished"], "Naming delayed the main request"
+            assert len(title_request["body"]["messages"]) == 2, "Naming received conversation history"
+            assert not title_request["body"].get("tools"), "Naming received tools"
         os.write(master, b"\x04")
         deadline = time.monotonic() + 10
         while process.poll() is None and time.monotonic() < deadline:
@@ -121,7 +140,7 @@ try:
                 except OSError:
                     break
         assert process.poll() == 0, f"Pi did not exit cleanly: {process.poll()}. Output: {output[-1500:]!r}"
-        print("PASS: real Pi TUI loaded the extension, generated a title concurrently, animated, and settled cleanly")
+        print("PASS: real Pi TUI generated, kept, and replaced titles using the dedicated model; animated and settled cleanly")
 finally:
     if process is not None and process.poll() is None:
         process.terminate()

@@ -5,31 +5,57 @@ Automatic task titles and a working spinner for [Pi](https://pi.dev), like Codex
 ```text
 Working:  ⠋ Fix login validation | demo-app
 Idle:       Fix login validation | demo-app
+New task: ⠋ Add invoice exports | demo-app
 ```
 
-## Install
+## Install and set up
 
 ```sh
 pi install npm:@sstehniybogd/pi-ghostty
 ```
 
-Or install from GitHub:
+Inside Pi:
 
-```sh
-pi install git:github.com/sstehniy/pi-ghostty
+```text
+/reload
+/ghostty model
 ```
 
-Run `/reload` in an existing Pi session. Requires Pi **1.5.0+**. Disable other extensions that change the terminal title.
+Search the model picker and select your preferred title model from connected providers. It is saved globally in `~/.pi/agent/pi-ghostty.json` (or `$PI_CODING_AGENT_DIR/pi-ghostty.json`); other open sessions pick up a changed setting on `/reload`. Your main coding model is unchanged. Prefer a small, fast text model.
+
+**No model selected means no naming or relevance requests.** The spinner works without setup. Choose **Disable naming** in the picker to turn naming off again.
+
+Requires Pi **1.5.0+**. Disable other extensions that change the terminal title. You can also install with `pi install git:github.com/sstehniy/pi-ghostty`.
 
 ## Usage
 
-Just send a prompt. An unnamed session gets a short task title in the background, without delaying Pi's work. The title is saved as the session name and stays stable across follow-ups and resumes. Use Pi's built-in `/name My task` to rename it manually; manual names always win.
+Send a prompt. An unnamed session gets a short task title in the background. Later requests trigger one small check returning `KEEP` or a new title:
 
-The spinner starts immediately when the run starts and stays visible through tool calls, retries, automatic compaction, and queued continuations. It disappears when Pi fully settles, including on cancellation or errors. No spinner means idle, not necessarily success.
+- Keep the title through clarifications, tests, fixes, reviews, commits, documentation, and brief unrelated asides.
+- Rename for a clearly different main goal. When uncertain, keep it.
+- Check queued requests when Pi starts processing them, not on submission.
+- Use one title for the overall request, not each internal subtask. Tool calls, internal turns, and retries do not cause extra checks.
 
-Naming runs once per unnamed session, using the current model and credentials. It sends only a naming instruction and the first **1,000 characters** of the prompt that starts the run, after Pi's skill/template expansion. No conversation history, images, files, or tool output are attached. This is an extra model request, may be billed, and is not included in Pi's session usage totals. Requests time out after 15 seconds. If naming fails, the normal title stays; use `/name` to set one yourself.
+| Command | Effect |
+| --- | --- |
+| `/ghostty model` | Search connected models, select one, or disable naming |
+| `/ghostty auto` | Enable automatic updates for this session on its next request |
+| `/ghostty` | Show the selected model and whether the title is automatic or pinned |
+| `/name My task` | Set a manual name and pin it against automatic changes |
 
-Uses Pi's public terminal-title API. No Ghostty configuration changes, AppleScript, native progress bars, or runtime dependencies. Works in other terminals that honor application-set titles, but Ghostty is the target. A manually pinned terminal title or a multiplexer may override it. Print, JSON, and RPC modes are unchanged.
+**Upgrading from 0.1:** model selection is now required. Existing names are preserved because their origin cannot be determined reliably. Run `/ghostty auto` to let an existing title evolve. Newly generated names are managed automatically and survive resume; manual names remain pinned until you explicitly enable auto mode again.
+
+The spinner starts immediately and stays visible through tools, retries, automatic compaction, and queued continuations. It disappears when Pi fully settles, including cancellation or errors. No spinner means idle, not necessarily success.
+
+## Usage and privacy
+
+Each check sends the selected provider a short instruction, the current title, up to **500 characters** of the request that established it, and up to **1,000 characters** of the new request. Long text uses beginning/end excerpts. Text is taken from messages Pi consumes, after expansion. No full transcript, images, or tool output are attached. Excerpts are not redacted; do not select a provider you would not trust with that text.
+
+These are character limits, not guaranteed token counts. The requested output limit is 128 tokens; reasoning is off where supported. Some models require reasoning. Requests use the selected provider's credentials and may consume API credit or subscription quota; they are not included in Pi's main session usage totals. **There is no silent fallback to the coding model or another provider.**
+
+Checks run without delaying the main request, time out after 15 seconds, and leave the title unchanged on failure. A failed check is not retried for the same message. Newer requests, manual renames, navigation, reload, and exit invalidate pending results. The task excerpt and ownership are saved as session metadata, not added to the main model's context.
+
+Uses Pi's public terminal-title API. No Ghostty configuration changes, AppleScript, native progress bars, or extra runtime dependencies. Other terminals may work if they honor application-set titles. A pinned terminal title or multiplexer can override updates. Print, JSON, and RPC modes are unchanged.
 
 ## Development
 
@@ -40,10 +66,12 @@ bun run test:terminal # macOS/Linux; Python 3 and Node.js required
 pi -e ./extensions/ghostty.ts
 ```
 
+`bun run test:semantic` is a **manual live test**: 20 synthetic cases through `openai-codex/gpt-6-luna` using an existing Codex subscription only. It never falls back to API-key billing and is not run by CI. See [test results](https://github.com/sstehniy/pi-ghostty/blob/main/tests/SEMANTIC_RESULTS.md).
+
 ## Remove
 
 ```sh
 pi remove npm:@sstehniybogd/pi-ghostty
 ```
 
-Use the same source you installed from, then `/reload`. Saved session names are kept.
+Use the same source you installed from, then `/reload`. Saved session names and your model preference are kept.
